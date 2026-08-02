@@ -5,22 +5,48 @@ const BASE = 'https://api.aladhan.com/v1';
 const DIYANET_METHOD = 13; // Aladhan'ın "Diyanet İşleri Başkanlığı, Turkey" hesaplama yöntemi
 
 /**
- * Diyanet tablosunda karşılığı olmayan konumlar (yurt dışı, eşleşmeyen ilçe) için
- * yedek kaynak. Diyanet'in hesaplama parametreleriyle çalışır, resmi tablo değildir.
+ * Diyanet tablosuna ulaşılamayan durumlar (yurt dışı, eşleşmeyen ilçe, engellenen
+ * kaynak) için yedek. Diyanet'in hesaplama parametreleriyle çalışır; resmi tablodan
+ * sapması ölçtüğümüz illerde en fazla 2 dakikadır.
  */
-export async function fetchAladhanTimes(lat, lng) {
-  const key = `aladhan:${lat.toFixed(2)},${lng.toFixed(2)}:${new Date().toISOString().slice(0, 10)}`;
+export function fetchAladhanTimesByCoords(lat, lng) {
+  return fetchCalendar(
+    'calendar',
+    `latitude=${lat}&longitude=${lng}`,
+    `${lat.toFixed(2)},${lng.toFixed(2)}`
+  );
+}
 
-  const data = await cached(key, 12 * HOUR, () =>
-    getJson(`${BASE}/calendar?latitude=${lat}&longitude=${lng}&method=${DIYANET_METHOD}`)
+/**
+ * Aladhan takvimi ay bazlı döner. Ayın son günlerinde "sıradaki vakit" bir sonraki
+ * aya taştığı için o günlerde ikinci ayı da çekiyoruz; ayın geri kalanında tek istek
+ * yeterli (Aladhan'ın rate limit'ini gereksiz yormamak için).
+ */
+async function fetchCalendar(endpoint, params, cacheKey) {
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth() + 1;
+
+  const ayınSonGünü = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const ayaSonKalan = ayınSonGünü - now.getUTCDate();
+
+  const aylar = [{ year, month }];
+  if (ayaSonKalan <= 2) aylar.push(sonrakiAy(year, month));
+
+  const sonuçlar = await Promise.all(
+    aylar.map(({ year, month }) =>
+      cached(`aladhan:${endpoint}:${cacheKey}:${year}-${month}`, 12 * HOUR, () =>
+        getJson(`${BASE}/${endpoint}/${year}/${month}?${params}&method=${DIYANET_METHOD}`)
+      )
+    )
   );
 
-  const timezone = data.data[0]?.meta?.timezone ?? 'UTC';
+  const günler = sonuçlar.flatMap((r) => r.data);
 
   return {
     source: 'aladhan',
-    timezone,
-    days: data.data.map((g) => ({
+    timezone: günler[0]?.meta?.timezone ?? 'UTC',
+    days: günler.map((g) => ({
       date: toIsoDate(g.date.gregorian.date),
       times: {
         // Diyanet'in "İmsak"ı sabah namazının başlangıcıdır; Aladhan'ın Imsak alanı
@@ -34,6 +60,10 @@ export async function fetchAladhanTimes(lat, lng) {
       },
     })),
   };
+}
+
+function sonrakiAy(year, month) {
+  return month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
 }
 
 /** "04:19 (+03)" -> "04:19" */

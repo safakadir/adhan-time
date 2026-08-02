@@ -52,6 +52,7 @@ böylece Kestirmeler'de hata mesajı da ekranda gösterilebilir.
 | --- | --- |
 | [ezanvakti.emushaf.net](https://ezanvakti.emushaf.net) | Diyanet'in resmi vakit tabloları (ilçe bazında, 32 günlük) |
 | [BigDataCloud](https://www.bigdatacloud.com/) reverse geocoding | Koordinat → il/ilçe (anahtar gerektirmez) |
+| [Nominatim](https://nominatim.openstreetmap.org/) | İl/ilçe adı → koordinat (yalnızca `?il=&ilce=` modunda) |
 | [Aladhan](https://aladhan.com/prayer-times-api) `method=13` | Yedek kaynak: yurt dışı, eşleşmeyen ilçe veya Diyanet kaynağına ulaşılamadığında |
 
 Öncelik her zaman Diyanet tablosundadır; hangisinin kullanıldığı yanıttaki
@@ -112,8 +113,12 @@ Konum izni vermek istemiyorsan URL'yi sabitleyebilirsin:
 
 - Vakit tabloları 12 saat, ilçe listeleri 30 gün bellekte önbelleklenir; servis
   yeniden başladığında önbellek sıfırlanır.
-- `?il=&ilce=` modunda koordinat olmadığı için yedek kaynağa düşülemez; Diyanet
-  kaynağına ulaşılamıyorsa bu modda hata döner, `lat`/`lng` kullanmak gerekir.
+- `?il=&ilce=` modunda yer adı önce koordinata çevrilir, sonra koordinatlı akışın
+  aynısı çalışır. Yer bulunamazsa 400 döner — yanlış yazılmış bir isim için sessizce
+  başka bir konumun vakitleri verilmez.
+- Aladhan takvimi ay bazlı döndüğü için ayın son iki gününde sonraki ay da çekilir;
+  aksi halde ayın son gecesi "sıradaki vakit" bulunamazdı.
+- Aladhan'ın rate limit'i var (429). Geçici hatalarda istek bir kez yeniden denenir.
 - Diyanet API'si her sorguda 32 günlük tablo döndürdüğü için gece yarısından
   sonraki "sıradaki vakit: İmsak" durumu ek istek gerektirmez.
 - Saat hesapları konumun kendi saat dilimine göre yapılır; sunucunun saat

@@ -2,6 +2,10 @@ import { getJson } from './http.js';
 import { cached, DAY } from './cache.js';
 
 const BIGDATACLOUD = 'https://api.bigdatacloud.net/data/reverse-geocode-client';
+const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
+
+// Nominatim kullanım politikası kendini tanıtan bir User-Agent istiyor.
+const NOMINATIM_UA = 'namaz-vakti-api/1.0 (kisisel kullanim)';
 
 /**
  * Koordinattan idari birim bilgisi çıkarır.
@@ -23,12 +27,43 @@ export async function reverseGeocode(lat, lng) {
     const ilce = atLevel(6) || data.city || data.locality;
 
     return {
+      lat,
+      lng,
       countryCode: data.countryCode,
-      countryName: data.countryName,
       il: il || null,
       ilce: ilce || null,
-      // "Gazipaşa/Antalya" — ilçe ile il aynıysa (Berlin gibi) tek isim kalsın.
       displayName: buildDisplayName(ilce, il, data.countryName),
+    };
+  });
+}
+
+/**
+ * İl/ilçe adından koordinat bulur. Koordinatlı akışla aynı şekli döndürdüğü için
+ * sonrasında tek bir kaynak seçim mantığı çalışır. Yer bulunamazsa null döner —
+ * yanlış yazılmış bir isim için sessizce rastgele bir konuma düşmeyi engeller.
+ */
+export async function geocodePlace(il, ilce, ulke = 'Türkiye') {
+  const sorgu = [ilce, il, ulke].filter(Boolean).join(', ');
+
+  return cached(`fwd:${sorgu.toLocaleLowerCase('tr')}`, 30 * DAY, async () => {
+    const url =
+      `${NOMINATIM}?q=${encodeURIComponent(sorgu)}` +
+      '&format=json&limit=1&addressdetails=1&accept-language=tr';
+
+    const [hit] = await getJson(url, { headers: { 'User-Agent': NOMINATIM_UA } });
+    if (!hit) return null;
+
+    const adres = hit.address ?? {};
+    const bulunanIl = adres.province ?? adres.state ?? il;
+    const bulunanIlce = adres.town ?? adres.county ?? adres.city ?? adres.village ?? ilce;
+
+    return {
+      lat: Number(hit.lat),
+      lng: Number(hit.lon),
+      countryCode: (adres.country_code ?? '').toUpperCase(),
+      il: bulunanIl || null,
+      ilce: bulunanIlce || null,
+      displayName: buildDisplayName(bulunanIlce, bulunanIl, adres.country),
     };
   });
 }

@@ -1,7 +1,7 @@
 import express from 'express';
-import { reverseGeocode } from './src/geo.js';
+import { reverseGeocode, geocodePlace } from './src/geo.js';
 import { fetchDiyanetTimes } from './src/diyanet.js';
-import { fetchAladhanTimes } from './src/aladhan.js';
+import { fetchAladhanTimesByCoords } from './src/aladhan.js';
 import { evaluate } from './src/prayer.js';
 
 const app = express();
@@ -44,38 +44,36 @@ app.get('/vakit', async (req, res) => {
  * hesaplama tabanlı kaynağa düşer.
  */
 async function resolveSchedule(query) {
-  const { lat, lng } = parseCoords(query);
+  const place = await resolvePlace(query);
 
-  if (lat != null) {
-    const place = await reverseGeocode(lat, lng);
-
-    if (place.countryCode === 'TR') {
-      const schedule = await tryDiyanet(place);
-      if (schedule) return { schedule, location: place.displayName };
-    }
-
-    return { schedule: await fetchAladhanTimes(lat, lng), location: place.displayName };
+  if (place.countryCode === 'TR') {
+    const schedule = await tryDiyanet(place);
+    if (schedule) return { schedule, location: place.displayName };
   }
+
+  return {
+    schedule: await fetchAladhanTimesByCoords(place.lat, place.lng),
+    location: place.displayName,
+  };
+}
+
+/** Hem koordinat hem il/ilçe girdisini aynı konum şekline indirger. */
+async function resolvePlace(query) {
+  const { lat, lng } = parseCoords(query);
+  if (lat != null) return reverseGeocode(lat, lng);
 
   const il = str(query.il);
   const ilce = str(query.ilce);
 
-  if (!il) {
+  if (!il && !ilce) {
     throw badRequest('lat & lng ya da il (ve tercihen ilce) parametresi gerekli');
   }
 
-  // Koordinat verilmediği için burada yedek kaynağa düşemiyoruz.
-  const schedule = await tryDiyanet({ il, ilce });
-  if (!schedule) {
-    const yer = [ilce, il].filter(Boolean).join('/');
-    throw badRequest(
-      lastDiyanetError
-        ? `Diyanet kaynağına ulaşılamadı (${lastDiyanetError}). lat & lng ile deneyin.`
-        : `Diyanet listesinde "${yer}" bulunamadı`
-    );
+  const place = await geocodePlace(il, ilce, str(query.ulke) ?? 'Türkiye');
+  if (!place) {
+    throw badRequest(`"${[ilce, il].filter(Boolean).join('/')}" adlı yer bulunamadı`);
   }
-
-  return { schedule, location: [ilce, il].filter(Boolean).join('/') };
+  return place;
 }
 
 // Diyanet kaynağı bazı sunucu IP'lerinden (ör. Render) Cloudflare tarafından
@@ -83,19 +81,17 @@ async function resolveSchedule(query) {
 // yedek kaynakla devam ediyoruz.
 const DIYANET_COOLDOWN_MS = 15 * 60 * 1000;
 let diyanetRetryAt = 0;
-let lastDiyanetError = null;
 
 async function tryDiyanet(place) {
   if (Date.now() < diyanetRetryAt) return null;
 
   try {
-    const schedule = await fetchDiyanetTimes(place);
-    lastDiyanetError = null;
-    return schedule;
+    return await fetchDiyanetTimes(place);
   } catch (err) {
     diyanetRetryAt = Date.now() + DIYANET_COOLDOWN_MS;
-    lastDiyanetError = err.message;
-    console.warn(`Diyanet kaynağı devre dışı (${Math.round(DIYANET_COOLDOWN_MS / 60000)} dk): ${err.message}`);
+    console.warn(
+      `Diyanet kaynağı ${Math.round(DIYANET_COOLDOWN_MS / 60000)} dk devre dışı: ${err.message}`
+    );
     return null;
   }
 }
