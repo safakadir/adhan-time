@@ -20,6 +20,11 @@ app.get('/', (req, res) => {
   );
 });
 
+// Uyku moduna geçmemesi için dışarıdan periyodik olarak çağrılır (bkz. README).
+app.get('/health', (req, res) => {
+  res.json({ ok: true, uptime: Math.round(process.uptime()) });
+});
+
 app.get('/vakit', async (req, res) => {
   const wantsText = req.query.format === 'text';
 

@@ -88,9 +88,28 @@ curl "http://localhost:3000/vakit?lat=36.2694&lng=32.3183&format=text"
 3. Ücretsiz plan yeterli; ortam değişkeni gerekmez, `PORT` Render tarafından verilir.
 
 **Ücretsiz plan uyarısı:** Servis 15 dakika istek almazsa uykuya geçer ve
-sonraki istek ~30-50 saniye sürer. Kestirme'nin anında yanıt vermesi için
-[cron-job.org](https://cron-job.org) gibi ücretsiz bir servisten 10 dakikada bir
-`https://<servis-adin>.onrender.com/` adresine ping atman yeterli.
+sonraki istek ~1 dakika sürer. Uyanık tutmak için `/health` ucuna periyodik
+ping atmak gerekir.
+
+### Uyanık tutma
+
+Depoda `.github/workflows/keep-alive.yml` var ve push edildiği anda devreye girer;
+adres workflow içinde yazılı olduğu için ek kurulum gerekmez (değişirse `SERVICE_URL`
+secret'ı tanımlamak yeterli). Ama GitHub Actions bu iş için ideal değil:
+
+- `schedule` tetikleyicisi yoğunlukta **5-30 dakika gecikebiliyor**, yani 10 dakikalık
+  aralık pratikte 15 dakikayı aşabilir ve servis yine uyur.
+- Depoya **60 gün commit atılmazsa** zamanlanmış workflow'lar sessizce devre dışı
+  bırakılır. Kod oturduktan sonra bu neredeyse kesin olarak başına gelir.
+
+Daha güvenilir yol: [cron-job.org](https://cron-job.org) veya
+[UptimeRobot](https://uptimerobot.com) üzerinden 10 dakikada bir aynı adrese ping.
+İkisi de ücretsiz, gecikmesiz ve kendi kendine kapanmıyor.
+
+**Kota:** Render ücretsiz planda **çalışma alanı başına aylık 750 saat** veriyor.
+7/24 uyanık tutmak 744 saat eder — sınırın hemen altı, kotayı aşarsan servis ay
+sonuna kadar askıya alınır. Bu yüzden workflow gece 01:00-03:00 arası (TR) ping
+atmıyor. Hesabında başka ücretsiz servis varsa aralığı daha da daraltmalısın.
 
 ## iPhone Kestirmesi kurulumu
 
