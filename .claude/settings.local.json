@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"https://api.aladhan.com/v1/timings/02-08-2026?latitude=36.2694&longitude=32.3183&method=13\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s \"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=36.2694&longitude=32.3183&localityLanguage=tr\")",
+      "Bash(curl -s -H \"User-Agent: namaz-vakti-test/1.0\" \"https://nominatim.openstreetmap.org/reverse?lat=36.2694&lon=32.3183&format=json&accept-language=tr\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\)['data']; print\\(json.dumps\\(d['meta'],indent=2,ensure_ascii=False\\)\\)\")",
+      "Bash(curl -s -m 15 \"https://ezanvakti.emushaf.net/ulkeler\")",
+      "Bash(curl -s -m 15 \"https://ezanvakti.emushaf.net/sehirler/2\")",
+      "Bash(curl -s -m 15 \"https://ezanvakti.emushaf.net/ilceler/540\")",
+      "Bash(curl -s -m 15 \"https://ezanvakti.emushaf.net/vakitler/9552\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(len\\(d\\)\\); print\\(json.dumps\\(d[0],indent=2,ensure_ascii=False\\)\\)\")"
+    ]
+  }
+}
