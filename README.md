@@ -52,10 +52,24 @@ böylece Kestirmeler'de hata mesajı da ekranda gösterilebilir.
 | --- | --- |
 | [ezanvakti.emushaf.net](https://ezanvakti.emushaf.net) | Diyanet'in resmi vakit tabloları (ilçe bazında, 32 günlük) |
 | [BigDataCloud](https://www.bigdatacloud.com/) reverse geocoding | Koordinat → il/ilçe (anahtar gerektirmez) |
-| [Aladhan](https://aladhan.com/prayer-times-api) `method=13` | Yedek kaynak: yurt dışı veya Diyanet listesinde eşleşmeyen konumlar |
+| [Aladhan](https://aladhan.com/prayer-times-api) `method=13` | Yedek kaynak: yurt dışı, eşleşmeyen ilçe veya Diyanet kaynağına ulaşılamadığında |
 
 Öncelik her zaman Diyanet tablosundadır; hangisinin kullanıldığı yanıttaki
 `source` alanından görülür. Hiçbiri API anahtarı istemez.
+
+### Diyanet kaynağı Cloudflare arkasında
+
+`ezanvakti.emushaf.net` Cloudflare kullanıyor ve bazı bulut sağlayıcılarının
+IP aralıklarına **403** dönüyor (Render'ın ücretsiz planında karşılaşılıyor).
+Bu durumda servis hata vermez, yedek kaynağa düşer ve `source: "aladhan"` döner.
+Diyanet kaynağı 15 dakika boyunca yeniden denenmez, böylece her istekte boşuna
+beklenmez.
+
+Aladhan'ın `method=13`'ü Diyanet'in hesaplama parametrelerini kullanır. Beş ilde
+(Antalya, İstanbul, Ankara, İzmir, Erzurum) 30 günlük tablolar karşılaştırıldığında
+resmi Diyanet vakitlerinden sapma **en fazla 2 dakika**dır — çoğu günde 0-1 dakika.
+
+Ayna adresi değişirse `DIYANET_BASE` ortam değişkeniyle başka bir adres verilebilir.
 
 ## Yerelde çalıştırma
 
@@ -98,6 +112,8 @@ Konum izni vermek istemiyorsan URL'yi sabitleyebilirsin:
 
 - Vakit tabloları 12 saat, ilçe listeleri 30 gün bellekte önbelleklenir; servis
   yeniden başladığında önbellek sıfırlanır.
+- `?il=&ilce=` modunda koordinat olmadığı için yedek kaynağa düşülemez; Diyanet
+  kaynağına ulaşılamıyorsa bu modda hata döner, `lat`/`lng` kullanmak gerekir.
 - Diyanet API'si her sorguda 32 günlük tablo döndürdüğü için gece yarısından
   sonraki "sıradaki vakit: İmsak" durumu ek istek gerektirmez.
 - Saat hesapları konumun kendi saat dilimine göre yapılır; sunucunun saat

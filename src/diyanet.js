@@ -1,7 +1,8 @@
 import { getJson } from './http.js';
 import { cached, DAY, HOUR } from './cache.js';
 
-const BASE = 'https://ezanvakti.emushaf.net';
+// Ayna adresi değişirse ortam değişkeniyle geçilebilsin.
+const BASE = process.env.DIYANET_BASE || 'https://ezanvakti.emushaf.net';
 const TURKIYE_ULKE_ID = '2';
 
 /**

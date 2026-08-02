@@ -40,7 +40,8 @@ app.get('/vakit', async (req, res) => {
 
 /**
  * Konumu vakit tablosuna çevirir. Öncelik Diyanet'in resmi tablosunda;
- * ilçe eşleşmezse veya konum yurt dışıysa hesaplama tabanlı kaynağa düşer.
+ * ilçe eşleşmezse, konum yurt dışıysa veya Diyanet kaynağına ulaşılamazsa
+ * hesaplama tabanlı kaynağa düşer.
  */
 async function resolveSchedule(query) {
   const { lat, lng } = parseCoords(query);
@@ -49,7 +50,7 @@ async function resolveSchedule(query) {
     const place = await reverseGeocode(lat, lng);
 
     if (place.countryCode === 'TR') {
-      const schedule = await fetchDiyanetTimes(place);
+      const schedule = await tryDiyanet(place);
       if (schedule) return { schedule, location: place.displayName };
     }
 
@@ -63,12 +64,40 @@ async function resolveSchedule(query) {
     throw badRequest('lat & lng ya da il (ve tercihen ilce) parametresi gerekli');
   }
 
-  const schedule = await fetchDiyanetTimes({ il, ilce });
+  // Koordinat verilmediği için burada yedek kaynağa düşemiyoruz.
+  const schedule = await tryDiyanet({ il, ilce });
   if (!schedule) {
-    throw badRequest(`Diyanet listesinde "${[ilce, il].filter(Boolean).join('/')}" bulunamadı`);
+    const yer = [ilce, il].filter(Boolean).join('/');
+    throw badRequest(
+      lastDiyanetError
+        ? `Diyanet kaynağına ulaşılamadı (${lastDiyanetError}). lat & lng ile deneyin.`
+        : `Diyanet listesinde "${yer}" bulunamadı`
+    );
   }
 
   return { schedule, location: [ilce, il].filter(Boolean).join('/') };
+}
+
+// Diyanet kaynağı bazı sunucu IP'lerinden (ör. Render) Cloudflare tarafından
+// engellenebiliyor. Her istekte yeniden denemek yerine bir süre devre dışı bırakıp
+// yedek kaynakla devam ediyoruz.
+const DIYANET_COOLDOWN_MS = 15 * 60 * 1000;
+let diyanetRetryAt = 0;
+let lastDiyanetError = null;
+
+async function tryDiyanet(place) {
+  if (Date.now() < diyanetRetryAt) return null;
+
+  try {
+    const schedule = await fetchDiyanetTimes(place);
+    lastDiyanetError = null;
+    return schedule;
+  } catch (err) {
+    diyanetRetryAt = Date.now() + DIYANET_COOLDOWN_MS;
+    lastDiyanetError = err.message;
+    console.warn(`Diyanet kaynağı devre dışı (${Math.round(DIYANET_COOLDOWN_MS / 60000)} dk): ${err.message}`);
+    return null;
+  }
 }
 
 function parseCoords(query) {

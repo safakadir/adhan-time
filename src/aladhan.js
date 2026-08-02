@@ -23,7 +23,9 @@ export async function fetchAladhanTimes(lat, lng) {
     days: data.data.map((g) => ({
       date: toIsoDate(g.date.gregorian.date),
       times: {
-        'İmsak': clean(g.timings.Imsak),
+        // Diyanet'in "İmsak"ı sabah namazının başlangıcıdır; Aladhan'ın Imsak alanı
+        // bunun 10 dk öncesini (oruç ihtiyatı) verdiği için Fajr'ı kullanıyoruz.
+        'İmsak': clean(g.timings.Fajr),
         'Güneş': clean(g.timings.Sunrise),
         'Öğle': clean(g.timings.Dhuhr),
         'İkindi': clean(g.timings.Asr),
