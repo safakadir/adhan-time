@@ -23,10 +23,15 @@ export function evaluate(schedule, { now = Date.now(), location } = {}) {
   const today = todayIso(now, offsetMinutes);
   const todaysTimes = schedule.days.find((d) => d.date === today)?.times ?? null;
 
+  const lines = [`Sonraki vakit: ${next.name} - ${remainingPhrase} - ${next.time}`];
+  if (current) lines.push(`Vakit: ${current.name} - ${current.time}`);
+  lines.push(location);
+
   return {
     ok: true,
-    displayText: `Sonraki vakit: ${next.name}, ${remainingPhrase} - ${location}`,
+    displayText: lines.join('\n'),
     currentPrayer: current?.name ?? null,
+    currentPrayerTime: current?.time ?? null,
     nextPrayer: next.name,
     nextPrayerTime: next.time,
     nextPrayerDate: next.date,

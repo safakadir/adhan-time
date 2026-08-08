@@ -5,7 +5,9 @@ Konumu alır, o konumun bağlı olduğu ilçenin Diyanet vakit tablosunu çeker 
 doğrudan ekranda gösterilebilecek bir metin döner:
 
 ```
-Sonraki vakit: İkindi, 2sa 17dk sonra - Gazipaşa/Antalya
+Sonraki vakit: İkindi - 2sa 17dk sonra - 16:49
+Vakit: Öğle - 13:02
+Gazipaşa/Antalya
 ```
 
 ## Uçlar
@@ -14,7 +16,7 @@ Sonraki vakit: İkindi, 2sa 17dk sonra - Gazipaşa/Antalya
 | --- | --- |
 | `GET /vakit?lat=36.2694&lng=32.3183` | Koordinattan vakit bilgisi (JSON) |
 | `GET /vakit?il=Antalya&ilce=Gazipaşa` | İl/ilçe adıyla vakit bilgisi (JSON) |
-| `GET /vakit?...&format=text` | Sadece `displayText` satırı, düz metin |
+| `GET /vakit?...&format=text` | Sadece `displayText`, düz metin (çok satırlı) |
 | `GET /` | Kısa kullanım bilgisi (health check olarak da kullanılır) |
 
 ### Örnek yanıt
@@ -22,8 +24,9 @@ Sonraki vakit: İkindi, 2sa 17dk sonra - Gazipaşa/Antalya
 ```json
 {
   "ok": true,
-  "displayText": "Sonraki vakit: İkindi, 2sa 17dk sonra - Gazipaşa/Antalya",
+  "displayText": "Sonraki vakit: İkindi - 2sa 17dk sonra - 16:49\nVakit: Öğle - 13:02\nGazipaşa/Antalya",
   "currentPrayer": "Öğle",
+  "currentPrayerTime": "13:02",
   "nextPrayer": "İkindi",
   "nextPrayerTime": "16:49",
   "nextPrayerDate": "2026-08-02",
@@ -121,8 +124,8 @@ atmıyor. Hesabında başka ücretsiz servis varsa aralığı daha da daraltmal�
 4. **URL'nin İçeriğini Al** eylemini ekle.
 5. **Uyarı Göster** (veya Bildirim Gönder) eylemine gelen sonucu ver.
 
-`format=text` kullanınca gelen yanıt zaten tek satır metin olduğu için ayrıca
-JSON ayrıştırmaya gerek kalmaz. JSON tercih edersen `format=text`'i kaldırıp
+`format=text` kullanınca gelen yanıt zaten doğrudan gösterilebilir düz metin
+olduğu için ayrıca JSON ayrıştırmaya gerek kalmaz. JSON tercih edersen `format=text`'i kaldırıp
 **Sözlük Değeri Al → displayText** eylemini araya ekle.
 
 Konum izni vermek istemiyorsan URL'yi sabitleyebilirsin:

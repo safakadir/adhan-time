@@ -15,7 +15,7 @@ app.get('/', (req, res) => {
       'GET /vakit?lat=36.2694&lng=32.3183',
       'GET /vakit?il=Antalya&ilce=Gazipasa',
       '',
-      'Ek parametre: &format=text  -> sadece displayText satirini dondurur',
+      'Ek parametre: &format=text  -> sadece displayText metnini dondurur',
     ].join('\n')
   );
 });
