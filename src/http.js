@@ -36,7 +36,10 @@ async function request(url, { timeout = DEFAULT_TIMEOUT, headers = {} } = {}) {
     // Engellenme sebebini (WAF bloğu, rate limit, challenge) loglardan görebilmek için
     // gövdenin başını hataya iliştiriyoruz.
     const detay = await res.text().catch(() => '');
-    const özet = detay.replace(/\s+/g, ' ').trim().slice(0, 120);
+    const düz = detay.replace(/\s+/g, ' ').trim();
+    // Cloudflare/Nominatim hata sayfaları HTML döndürüyor; ekranda gösterilecek
+    // mesaja doctype yapıştırmak yerine sadece makine okunur gövdeleri iliştiriyoruz.
+    const özet = /^<[?!a-z]/i.test(düz) ? '' : düz.slice(0, 120);
     const err = new Error(
       `${new URL(url).host} isteği ${res.status} döndü${özet ? ` — ${özet}` : ''}`
     );

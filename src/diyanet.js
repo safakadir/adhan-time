@@ -1,5 +1,6 @@
 import { getJson } from './http.js';
 import { cached, DAY, HOUR } from './cache.js';
+import { matches, titleCase } from './text.js';
 
 // Ayna adresi değişirse ortam değişkeniyle geçilebilsin.
 const BASE = process.env.DIYANET_BASE || 'https://ezanvakti.emushaf.net';
@@ -10,9 +11,13 @@ const TURKIYE_ULKE_ID = '2';
  * Koordinat kabul etmediği için il/ilçe adını ID'ye çevirip sorguluyoruz.
  */
 export async function fetchDiyanetTimes({ il, ilce }) {
-  const ilceId = await findIlceId(il, ilce);
-  if (!ilceId) return null;
+  const district = await resolveDistrict(il, ilce);
+  if (!district) return null;
 
+  return fetchTimesById(district.ilceId);
+}
+
+export async function fetchTimesById(ilceId) {
   const kayitlar = await cached(`diyanet:vakit:${ilceId}`, 12 * HOUR, () =>
     getJson(`${BASE}/vakitler/${ilceId}`)
   );
@@ -34,47 +39,58 @@ export async function fetchDiyanetTimes({ il, ilce }) {
   };
 }
 
-/** İl adından SehirID, ilçe adından IlceID bulur; eşleşme yoksa null. */
-async function findIlceId(il, ilce) {
-  if (!il) return null;
+/**
+ * İl adından SehirID, ilçe adından IlceID bulur; eşleşme yoksa null.
+ * Diyanet'in kendi yazımını da döndürüyoruz: il/ilçe adıyla gelen isteklerde
+ * ekranda gösterilecek adı buradan kuruyoruz, geocoding'e gerek kalmıyor.
+ */
+export async function resolveDistrict(il, ilce, { strict = false } = {}) {
+  if (!il && !ilce) return null;
 
   const sehirler = await cached('diyanet:sehirler', 30 * DAY, () =>
     getJson(`${BASE}/sehirler/${TURKIYE_ULKE_ID}`)
   );
 
-  const sehir = sehirler.find((s) => matches(s.SehirAdi, il) || matches(s.SehirAdiEn, il));
+  // İl verilmediyse ilçe adını il gibi de deneyelim ("?il=Çorlu" yerine "?ilce=Çorlu").
+  const aranan = il || ilce;
+  const sehir = sehirler.find((s) => matches(s.SehirAdi, aranan) || matches(s.SehirAdiEn, aranan));
   if (!sehir) return null;
 
   const ilceler = await cached(`diyanet:ilceler:${sehir.SehirID}`, 30 * DAY, () =>
     getJson(`${BASE}/ilceler/${sehir.SehirID}`)
   );
 
+  const tamEslesme = ilceler.find((i) => matches(i.IlceAdi, ilce) || matches(i.IlceAdiEn, ilce));
+
+  // Kullanıcı açıkça bir ilçe yazdıysa ve Diyanet listesinde yoksa (ör. bir mahalle
+  // adı) il merkezine düşmüyoruz: çağıran taraf koordinata çevirip daha yakın ilçeyi
+  // bulabilir. Koordinattan gelen akışta ise merkeze düşmek doğru davranış.
+  if (!tamEslesme && strict && ilce) return null;
+
   // İlçe adı bulunamazsa il merkezini (il ile aynı adlı ilçe) kullan,
   // o da yoksa listedeki ilk ilçeye düşmek yerine vazgeç.
   const bulunan =
-    ilceler.find((i) => matches(i.IlceAdi, ilce) || matches(i.IlceAdiEn, ilce)) ??
-    ilceler.find((i) => matches(i.IlceAdi, il) || matches(i.IlceAdiEn, il)) ??
-    ilceler.find((i) => matches(i.IlceAdi, `${il} MERKEZ`));
+    tamEslesme ??
+    ilceler.find((i) => matches(i.IlceAdi, aranan) || matches(i.IlceAdiEn, aranan)) ??
+    ilceler.find((i) => matches(i.IlceAdi, `${aranan} MERKEZ`));
 
-  return bulunan?.IlceID ?? null;
+  if (!bulunan) return null;
+
+  const ilAdi = titleCase(sehir.SehirAdi);
+  const ilceAdi = titleCase(bulunan.IlceAdi);
+
+  return {
+    ilceId: bulunan.IlceID,
+    il: ilAdi,
+    ilce: ilceAdi,
+    countryCode: 'TR',
+    displayName: buildDisplayName(ilceAdi, ilAdi),
+  };
 }
 
-/**
- * Türkçe yer adlarını karşılaştırır: aksan, büyük/küçük harf ve
- * "İ/I", "ı/i" farkları API'ler arasında tutarsız olduğu için hepsini sadeleştiriyoruz.
- */
-function matches(a, b) {
-  return a != null && b != null && normalize(a) === normalize(b);
-}
-
-function normalize(value) {
-  return String(value)
-    .toLocaleLowerCase('tr')
-    .replaceAll('ı', 'i')
-    .replaceAll('İ', 'i')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]/g, '');
+function buildDisplayName(ilce, il) {
+  const unique = [...new Set([ilce, il].filter(Boolean))];
+  return unique.join('/');
 }
 
 /** "29.07.2026" -> "2026-07-29" */

@@ -55,11 +55,29 @@ böylece Kestirmeler'de hata mesajı da ekranda gösterilebilir.
 | --- | --- |
 | [ezanvakti.emushaf.net](https://ezanvakti.emushaf.net) | Diyanet'in resmi vakit tabloları (ilçe bazında, 32 günlük) |
 | [BigDataCloud](https://www.bigdatacloud.com/) reverse geocoding | Koordinat → il/ilçe (anahtar gerektirmez) |
-| [Nominatim](https://nominatim.openstreetmap.org/) | İl/ilçe adı → koordinat (yalnızca `?il=&ilce=` modunda) |
+| [Nominatim](https://nominatim.openstreetmap.org/) | Yer adı → koordinat (yalnızca Diyanet listesinde eşleşmeyen yerler için) |
+| [Open-Meteo Geocoding](https://open-meteo.com/en/docs/geocoding-api) | Nominatim rate limit verdiğinde (429) devreye giren yedek geocoder |
 | [Aladhan](https://aladhan.com/prayer-times-api) `method=13` | Yedek kaynak: yurt dışı, eşleşmeyen ilçe veya Diyanet kaynağına ulaşılamadığında |
 
 Öncelik her zaman Diyanet tablosundadır; hangisinin kullanıldığı yanıttaki
 `source` alanından görülür. Hiçbiri API anahtarı istemez.
+
+### Nominatim rate limit'i (429)
+
+Nominatim'in kullanım politikası paylaşımlı sunucu IP'lerine sert davranıyor;
+Render gibi ortaklardan gelen isteklere **429** dönebiliyor. İki önlem var:
+
+1. `?il=&ilce=` modunda **hiç geocoding yapılmıyor**. Diyanet API'si zaten il/ilçe
+   adıyla çalıştığı için isim doğrudan Diyanet'in kendi listesinde aranıyor.
+   Nominatim yalnızca Diyanet listesinde olmayan yerler (mahalle adları, yurt dışı)
+   için devreye giriyor.
+2. Nominatim 429/403 dönerse 30 dakika devre dışı bırakılıp Open-Meteo'nun
+   geocoding ucuna geçiliyor. Open-Meteo'nun eşleşmesi daha gevşek olduğu için
+   sonuçlar il adıyla doğrulanıyor; doğrulanamazsa yanlış ildeki aynı adlı yere
+   düşmek yerine il merkezine çekiliyor.
+
+İhtiyaç olursa `NOMINATIM_UA` ortam değişkeniyle kendini tanıtan başka bir
+User-Agent verilebilir.
 
 ### Diyanet kaynağı Cloudflare arkasında
 
@@ -135,9 +153,14 @@ Konum izni vermek istemiyorsan URL'yi sabitleyebilirsin:
 
 - Vakit tabloları 12 saat, ilçe listeleri 30 gün bellekte önbelleklenir; servis
   yeniden başladığında önbellek sıfırlanır.
-- `?il=&ilce=` modunda yer adı önce koordinata çevrilir, sonra koordinatlı akışın
-  aynısı çalışır. Yer bulunamazsa 400 döner — yanlış yazılmış bir isim için sessizce
-  başka bir konumun vakitleri verilmez.
+- `?il=&ilce=` modunda önce Diyanet'in kendi il/ilçe listesi denenir; eşleşirse
+  hiçbir geocoding servisine gidilmez. Eşleşmezse yer adı koordinata çevrilip
+  koordinatlı akışın aynısı çalışır. Yer bulunamazsa 400 döner — yanlış yazılmış bir
+  isim için sessizce başka bir konumun vakitleri verilmez.
+- Yazdığın ilçe Diyanet listesinde yoksa (ör. "Çamyuva" gibi bir mahalle) doğrudan il
+  merkezine düşülmez; önce koordinata çevrilip en yakın ilçe (Kemer) bulunur.
+- Yukarı akış kaynaklarının hata kodları (403/429) istemciye aynen yansıtılmaz,
+  dışarıya 502 olarak çıkar. Yalnızca istek hatalı yazıldığında 400 döner.
 - Aladhan takvimi ay bazlı döndüğü için ayın son iki gününde sonraki ay da çekilir;
   aksi halde ayın son gecesi "sıradaki vakit" bulunamazdı.
 - Aladhan'ın rate limit'i var (429). Geçici hatalarda istek bir kez yeniden denenir.

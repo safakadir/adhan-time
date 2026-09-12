@@ -1,6 +1,6 @@
 import express from 'express';
 import { reverseGeocode, geocodePlace } from './src/geo.js';
-import { fetchDiyanetTimes } from './src/diyanet.js';
+import { fetchDiyanetTimes, fetchTimesById, resolveDistrict } from './src/diyanet.js';
 import { fetchAladhanTimesByCoords } from './src/aladhan.js';
 import { evaluate } from './src/prayer.js';
 
@@ -35,7 +35,9 @@ app.get('/vakit', async (req, res) => {
     if (wantsText) return res.type('text/plain; charset=utf-8').send(result.displayText);
     res.json(result);
   } catch (err) {
-    const status = err.status ?? 502;
+    // Yalnızca kendi ürettiğimiz istemci hatası 400 döner; yukarı akıştaki
+    // 403/429 gibi kodlar bize ait değil, dışarıya 502 olarak çıkar.
+    const status = err.status === 400 ? 400 : 502;
     const displayText = `Namaz vakti alınamadı: ${err.message}`;
 
     if (wantsText) return res.status(status).type('text/plain; charset=utf-8').send(displayText);
@@ -49,10 +51,20 @@ app.get('/vakit', async (req, res) => {
  * hesaplama tabanlı kaynağa düşer.
  */
 async function resolveSchedule(query) {
-  const place = await resolvePlace(query);
+  const { lat, lng } = parseCoords(query);
+
+  // İl/ilçe adıyla gelen istekler: Diyanet zaten isimle çalıştığı için önce onu
+  // deniyoruz. Tuttuğunda geocoding'e hiç gerek kalmaz — Nominatim'in rate limit'i
+  // (429) bu akışı gereksiz yere düşürüyordu.
+  if (lat == null) {
+    const byName = await resolveByName(query);
+    if (byName) return byName;
+  }
+
+  const place = lat != null ? await reverseGeocode(lat, lng) : await geocodeFromQuery(query);
 
   if (place.countryCode === 'TR') {
-    const schedule = await tryDiyanet(place);
+    const schedule = await tryDiyanet(() => fetchDiyanetTimes(place));
     if (schedule) return { schedule, location: place.displayName };
   }
 
@@ -62,23 +74,43 @@ async function resolveSchedule(query) {
   };
 }
 
-/** Hem koordinat hem il/ilçe girdisini aynı konum şekline indirger. */
-async function resolvePlace(query) {
-  const { lat, lng } = parseCoords(query);
-  if (lat != null) return reverseGeocode(lat, lng);
+/** Diyanet'in kendi il/ilçe listesinden doğrudan eşleşme; bulunamazsa null. */
+async function resolveByName(query) {
+  const { il, ilce, ulke } = placeQuery(query);
+  if (!isTurkiye(ulke)) return null;
 
+  const district = await tryDiyanet(() => resolveDistrict(il, ilce, { strict: true }));
+  if (!district) return null;
+
+  const schedule = await tryDiyanet(() => fetchTimesById(district.ilceId));
+  if (!schedule) return null;
+
+  return { schedule, location: district.displayName };
+}
+
+/** İl/ilçe adını koordinata çevirir (yurt dışı ya da Diyanet'te eşleşmeyen yerler). */
+async function geocodeFromQuery(query) {
+  const { il, ilce, ulke } = placeQuery(query);
+
+  const place = await geocodePlace(il, ilce, ulke);
+  if (!place) {
+    throw badRequest(`"${[ilce, il].filter(Boolean).join('/')}" adlı yer bulunamadı`);
+  }
+  return place;
+}
+
+function placeQuery(query) {
   const il = str(query.il);
   const ilce = str(query.ilce);
 
   if (!il && !ilce) {
     throw badRequest('lat & lng ya da il (ve tercihen ilce) parametresi gerekli');
   }
+  return { il, ilce, ulke: str(query.ulke) ?? 'Türkiye' };
+}
 
-  const place = await geocodePlace(il, ilce, str(query.ulke) ?? 'Türkiye');
-  if (!place) {
-    throw badRequest(`"${[ilce, il].filter(Boolean).join('/')}" adlı yer bulunamadı`);
-  }
-  return place;
+function isTurkiye(ulke) {
+  return ['turkiye', 'türkiye', 'turkey', 'tr'].includes(ulke.toLocaleLowerCase('tr'));
 }
 
 // Diyanet kaynağı bazı sunucu IP'lerinden (ör. Render) Cloudflare tarafından
@@ -87,11 +119,11 @@ async function resolvePlace(query) {
 const DIYANET_COOLDOWN_MS = 15 * 60 * 1000;
 let diyanetRetryAt = 0;
 
-async function tryDiyanet(place) {
+async function tryDiyanet(fn) {
   if (Date.now() < diyanetRetryAt) return null;
 
   try {
-    return await fetchDiyanetTimes(place);
+    return await fn();
   } catch (err) {
     diyanetRetryAt = Date.now() + DIYANET_COOLDOWN_MS;
     console.warn(
